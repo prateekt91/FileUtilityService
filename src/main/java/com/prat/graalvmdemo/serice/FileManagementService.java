@@ -1,9 +1,12 @@
 package com.prat.graalvmdemo.serice;
 
+import org.springframework.core.io.Resource;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 
 import java.io.File;
 import java.util.List;
+import java.util.Optional;
 
 public interface FileManagementService {
 
@@ -11,5 +14,5 @@ public interface FileManagementService {
 
     String uploadFile();
 
-    File downloadFile();
+    ResponseEntity<Resource> downloadFile(String fileName);
 }

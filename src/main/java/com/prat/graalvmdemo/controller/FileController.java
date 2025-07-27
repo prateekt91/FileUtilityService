@@ -4,12 +4,9 @@ import com.prat.graalvmdemo.serice.FileManagementService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.core.io.Resource;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
-
+import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
 @RestController
@@ -37,8 +34,9 @@ public class FileController {
     }
 
     @GetMapping("/download")
-    public String downloadFile() {
+    public ResponseEntity<Resource> downloadFile(@RequestParam String fileName) {
         // Logic to download a file would go here
-        return "File downloaded successfully";
+        log.info("Inside FileController.downloadFile() method for file: {}", fileName);
+        return fileManagementService.downloadFile(fileName);
     }
 }
