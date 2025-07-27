@@ -9,10 +9,10 @@
         <relativePath/> <!-- lookup parent from repository -->
     </parent>
     <groupId>com.prat</groupId>
-    <artifactId>graalvmdemo</artifactId>
+    <artifactId>fileutilityservice</artifactId>
     <version>0.0.1-SNAPSHOT</version>
-    <name>GraalVM_Spring</name>
-    <description>GraalVM_Spring</description>
+    <name>FileUtilityService</name>
+    <description>FileUtilityService</description>
     <url/>
     <licenses>
         <license/>

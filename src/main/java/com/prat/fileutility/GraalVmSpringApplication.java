@@ -1,4 +1,4 @@
-package com.prat.graalvmdemo;
+package com.prat.fileutility;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;

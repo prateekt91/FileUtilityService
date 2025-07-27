@@ -1,4 +1,4 @@
-package com.prat.graalvmdemo.serice;
+package com.prat.fileutility.serice;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -10,13 +10,13 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.util.Assert;
+import org.springframework.web.multipart.MultipartFile;
 
-import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.time.Instant;
 import java.util.List;
-import java.util.Optional;
 import java.util.stream.Stream;
 
 @Service
@@ -56,8 +56,23 @@ public class FileManagementServiceImpl implements FileManagementService {
     }
 
     @Override
-    public String uploadFile() {
-        return "";
+    public String uploadFile(MultipartFile file, Instant time) {
+
+        log.info("Inside FileManagementServiceImpl.uploadFile() method");
+        Assert.notNull(file, "File cannot be null");
+
+        String fileName = file.getOriginalFilename();
+        try {
+            Path filePath = Paths.get(directoryPath, fileName);
+            Files.write(filePath, file.getBytes());
+            Instant currentTime = Instant.now();
+            long timeTook = (currentTime.toEpochMilli() - time.toEpochMilli())/1000;
+            log.info("Time taken to upload file: {} is: {} s", fileName, timeTook);
+            return "File uploaded successfully: " + fileName + " It took " +timeTook+ " seconds";
+        } catch (Exception e) {
+            log.error("Error uploading file: {}", fileName, e);
+            return "Error uploading file: " + fileName;
+        }
     }
 
     @Override

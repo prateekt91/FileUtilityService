@@ -1,4 +1,4 @@
-package com.prat.graalvmdemo.controller;
+package com.prat.fileutility.controller;
 
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;

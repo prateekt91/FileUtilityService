@@ -1,22 +1,28 @@
-package com.prat.graalvmdemo.controller;
+package com.prat.fileutility.controller;
 
-import com.prat.graalvmdemo.serice.FileManagementService;
+import com.prat.fileutility.serice.FileManagementService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.io.Resource;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
+
+import java.time.Instant;
 import java.util.List;
 
 @RestController
 @RequestMapping("/api/files")
 public class FileController {
 
-    @Autowired
-    private FileManagementService fileManagementService;
 
-    private static Logger log = LoggerFactory.getLogger(FileController.class);
+    private final FileManagementService fileManagementService;
+
+    private static final Logger log = LoggerFactory.getLogger(FileController.class);
+
+    public FileController(FileManagementService fileManagementService) {
+        this.fileManagementService = fileManagementService;
+    }
 
     @GetMapping("/list")
     public ResponseEntity<List<String>> listFiles() {
@@ -28,9 +34,12 @@ public class FileController {
     }
 
     @PostMapping("/upload")
-    public String uploadFile() {
+    public ResponseEntity<String> uploadFile(@RequestParam("file") MultipartFile file) {
+        Instant time = Instant.now();
+        log.info("Inside FileController.uploadFile() method");
+        log.info("Uploading file: {} with size: {} bytes", file.getOriginalFilename(), file.getSize());
         // Logic to upload a file would go here
-        return "File uploaded successfully";
+        return ResponseEntity.ok(fileManagementService.uploadFile(file, time));
     }
 
     @GetMapping("/download")
