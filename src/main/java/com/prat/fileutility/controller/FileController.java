@@ -1,6 +1,7 @@
 package com.prat.fileutility.controller;
 
-import com.prat.fileutility.serice.FileManagementService;
+import com.prat.fileutility.model.FileDesc;
+import com.prat.fileutility.service.FileManagementService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.core.io.Resource;
@@ -25,7 +26,7 @@ public class FileController {
     }
 
     @GetMapping("/list")
-    public ResponseEntity<List<String>> listFiles() {
+    public ResponseEntity<List<FileDesc>> listFiles() {
 
         log.info("Inside FileController.listFiles() method");
         log.info("Listing files in the directory");
@@ -48,4 +49,16 @@ public class FileController {
         log.info("Inside FileController.downloadFile() method for file: {}", fileName);
         return fileManagementService.downloadFile(fileName);
     }
+
+    @GetMapping("/download/resize")
+    public ResponseEntity<Resource> downloadResizedFile(
+            @RequestParam String fileName,
+            @RequestParam(required = false) Integer width,
+            @RequestParam(required = false) Integer height,
+            @RequestParam(defaultValue = "SMOOTH") String quality) {
+
+        log.info("Downloading resized file: {} with dimensions: {}x{}", fileName, width, height);
+        return fileManagementService.downloadResizedFile(fileName, width, height, quality);
+    }
+
 }

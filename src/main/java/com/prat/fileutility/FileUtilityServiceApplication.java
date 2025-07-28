@@ -4,10 +4,10 @@ import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
 @SpringBootApplication
-public class GraalVmSpringApplication {
+public class FileUtilityServiceApplication {
 
     public static void main(String[] args) {
-        SpringApplication.run(GraalVmSpringApplication.class, args);
+        SpringApplication.run(FileUtilityServiceApplication.class, args);
     }
 
 }
