@@ -45,8 +45,15 @@ public class FileController {
 
     @GetMapping("/download")
     public ResponseEntity<Resource> downloadFile(@RequestParam String fileName) {
+                                                // @RequestHeader(value = "Range", required = false) String rangeHeader) {
         // Logic to download a file would go here
         log.info("Inside FileController.downloadFile() method for file: {}", fileName);
+
+//        if (rangeHeader != null) {
+//            log.info("Range request detected: {}", rangeHeader);
+//            return fileManagementService.streamMediaFile(fileName, rangeHeader);
+//        }
+
         return fileManagementService.downloadFile(fileName);
     }
 

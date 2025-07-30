@@ -19,9 +19,12 @@ import org.springframework.web.multipart.MultipartFile;
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -38,14 +41,12 @@ public class FileManagementServiceImpl implements FileManagementService {
 
     private Logger log = LoggerFactory.getLogger(FileManagementServiceImpl.class);
 
-
     public FileManagementServiceImpl(FileOperationRepository fileOperationRepository) {
         this.fileOperationRepository = fileOperationRepository;
     }
 
     @Override
     public List<FileDesc> listFiles() {
-
         log.info("Inside FileManagementServiceImpl.listFiles() method");
 
         // Logic to list files in a directory would go here
@@ -79,34 +80,64 @@ public class FileManagementServiceImpl implements FileManagementService {
 
     @Override
     public String uploadFile(MultipartFile file, Instant time) {
-
         log.info("Inside FileManagementServiceImpl.uploadFile() method");
         Assert.notNull(file, "File cannot be null");
 
         String fileName = file.getOriginalFilename();
         try {
-            Path filePath = Paths.get(directoryPath, fileName);
-            Files.write(filePath, file.getBytes());
+            // Validate file is not empty
+            if (file.isEmpty()) {
+                log.error("File is empty: {}", fileName);
+                return "Error: File is empty";
+            }
 
-            FileDesc fileDesc = new FileDesc(null, file.getOriginalFilename(), file.getContentType(), file.getSize(), LocalDateTime.now(), directoryPath);
+            // Validate filename is not null or empty
+            if (fileName == null || fileName.trim().isEmpty()) {
+                log.error("File name is null or empty");
+                return "Error: File name is required";
+            }
+
+            // Create a directory if it doesn't exist
+            Path directoryPathObj = Paths.get(directoryPath);
+            if (!Files.exists(directoryPathObj)) {
+                Files.createDirectories(directoryPathObj);
+                log.info("Created directory: {}", directoryPath);
+            }
+
+            // Create the target file path correctly
+            Path targetFile = directoryPathObj.resolve(fileName);
+            
+            log.info("Uploading a file to: {}", targetFile.toString());
+
+            // Use streaming to copy file
+            try (InputStream inputStream = file.getInputStream()) {
+                Files.copy(inputStream, targetFile, StandardCopyOption.REPLACE_EXISTING);
+            }
+
+            // Save file metadata
+            FileDesc fileDesc = new FileDesc(null, file.getOriginalFilename(),
+                    file.getContentType(), file.getSize(), LocalDateTime.now(),
+                    directoryPath);
             fileOperationRepository.save(fileDesc);
 
             Instant currentTime = Instant.now();
-            long timeTook = (currentTime.toEpochMilli() - time.toEpochMilli())/1000;
+            long timeTook = (currentTime.toEpochMilli() - time.toEpochMilli()) / 1000;
             log.info("Time taken to upload file: {} is: {} s", fileName, timeTook);
-            return "File uploaded successfully: " + fileName + " It took " +timeTook+ " seconds";
+            return "File uploaded successfully: " + fileName + " It took " + timeTook + " seconds";
+            
+        } catch (IOException e) {
+            log.error("IO Error uploading file: {}", fileName, e);
+            return "Error uploading file: " + fileName + " - IO Error: " + e.getMessage();
         } catch (Exception e) {
             log.error("Error uploading file: {}", fileName, e);
-            return "Error uploading file: " + fileName;
+            return "Error uploading file: " + fileName + " - " + e.getMessage();
         }
     }
 
     @Override
     public ResponseEntity<Resource> downloadFile(String fileName) {
-
         log.info("Inside FileManagementServiceImpl.downloadFile() method");
         try {
-
             Assert.notNull(fileName, "File name cannot be null");
 
             Path filePath = Paths.get(directoryPath, fileName);
@@ -124,16 +155,25 @@ public class FileManagementServiceImpl implements FileManagementService {
             log.info("File found and accessible: {} with content type: {}", filePath.getFileName(), contentType);
 
             ResponseEntity.BodyBuilder responseBuilder = ResponseEntity.ok()
-                    .header(HttpHeaders.CONTENT_DISPOSITION, buildContentDisposition(fileName, contentType))
+                   // .header(HttpHeaders.CONTENT_DISPOSITION, buildContentDisposition(fileName, contentType))
                     .contentType(MediaType.parseMediaType(contentType));
 
-
-            // Add PDF-specific headers for better browser handling
-            if (isPdfFile(fileName, contentType)) {
+            // Check if it's a media file that needs streaming support
+            if (isMediaFile(contentType)) {
+                log.info("Setting up streaming headers for media file: {}", fileName);
+                responseBuilder
+                        .header(HttpHeaders.ACCEPT_RANGES, "bytes")
+                        .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"" + fileName + "\"")
+                        .header(HttpHeaders.CACHE_CONTROL, "public, max-age=3600")
+                        .header("X-Content-Duration", getMediaDuration(filePath).toString());
+            }
+             // Add PDF-specific headers for better browser handling
+             else if (isPdfFile(fileName, contentType)) {
                 responseBuilder.header(HttpHeaders.CACHE_CONTROL, "no-cache, no-store, must-revalidate")
+                        .header(HttpHeaders.CONTENT_DISPOSITION, buildContentDisposition(fileName, contentType))
                         .header(HttpHeaders.PRAGMA, "no-cache")
-                        .header(HttpHeaders.EXPIRES, "0");
-                log.info("Added PDF-specific headers for file: {}", fileName);
+                       .header(HttpHeaders.EXPIRES, "0");
+                log.info("Added PDF-specific headers for a file: {}", fileName);
             }
 
             return responseBuilder.body(resource);
@@ -143,6 +183,17 @@ public class FileManagementServiceImpl implements FileManagementService {
             return ResponseEntity.status(500).body(null);
         }
     }
+
+    private Long getMediaDuration(Path filePath) {
+        // This is a placeholder - in a real implementation, you might use
+        // a library like FFmpeg Java wrapper to get actual media duration
+        try {
+            return Files.size(filePath) / 1024; // Simple estimation based on file size
+        } catch (Exception e) {
+            return 0L;
+        }
+    }
+
 
     @Override
     public ResponseEntity<Resource> downloadResizedFile(String fileName, Integer width, Integer height, String quality) {
@@ -226,7 +277,6 @@ public class FileManagementServiceImpl implements FileManagementService {
         };
     }
 
-
     private String getFileNameWithoutExtension(String fileName) {
         int dotIndex = fileName.lastIndexOf(".");
         return dotIndex > 0 ? fileName.substring(0, dotIndex) : fileName;
@@ -235,6 +285,18 @@ public class FileManagementServiceImpl implements FileManagementService {
     private boolean isPdfFile(String fileName, String contentType) {
         return (contentType != null && contentType.equals("application/pdf")) ||
                 fileName.toLowerCase().endsWith(".pdf");
+    }
+    
+    private boolean isMediaFile(String contentType) {
+        if (contentType == null) return false;
+
+        return contentType.startsWith("video/") ||
+                contentType.startsWith("audio/") ||
+                contentType.equals("application/octet-stream") &&
+                        (contentType.contains("mp4") || contentType.contains("avi") ||
+                                contentType.contains("mkv") || contentType.contains("mp3") ||
+                                contentType.contains("wav") || contentType.contains("flac"));
+
     }
 
     private String determineContentType(String fileName, FileDesc fileDesc) {
@@ -259,7 +321,6 @@ public class FileManagementServiceImpl implements FileManagementService {
         };
     }
 
-
     private String getFileExtension(String fileName) {
         int dotIndex = fileName.lastIndexOf(".");
         return dotIndex > 0 ? fileName.substring(dotIndex + 1) : "";
@@ -273,7 +334,4 @@ public class FileManagementServiceImpl implements FileManagementService {
         // For other files, use attachment to force download
         return String.format("attachment; filename=\"%s\"", fileName);
     }
-
-
-
 }
