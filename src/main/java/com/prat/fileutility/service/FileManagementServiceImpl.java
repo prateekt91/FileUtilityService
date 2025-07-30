@@ -117,11 +117,27 @@ public class FileManagementServiceImpl implements FileManagementService {
                 throw new RuntimeException("File not found: " + fileName);
             }
 
-            log.info("File found and accessible: {}", filePath.getFileName());
-            return ResponseEntity.ok()
-                    .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + fileName + "\"")
-                    .contentType(MediaType.APPLICATION_OCTET_STREAM)
-                    .body(resource);
+            // Get file information from repository
+            FileDesc fileDesc = fileOperationRepository.findByName(fileName);
+            String contentType = determineContentType(fileName, fileDesc);
+
+            log.info("File found and accessible: {} with content type: {}", filePath.getFileName(), contentType);
+
+            ResponseEntity.BodyBuilder responseBuilder = ResponseEntity.ok()
+                    .header(HttpHeaders.CONTENT_DISPOSITION, buildContentDisposition(fileName, contentType))
+                    .contentType(MediaType.parseMediaType(contentType));
+
+
+            // Add PDF-specific headers for better browser handling
+            if (isPdfFile(fileName, contentType)) {
+                responseBuilder.header(HttpHeaders.CACHE_CONTROL, "no-cache, no-store, must-revalidate")
+                        .header(HttpHeaders.PRAGMA, "no-cache")
+                        .header(HttpHeaders.EXPIRES, "0");
+                log.info("Added PDF-specific headers for file: {}", fileName);
+            }
+
+            return responseBuilder.body(resource);
+
         } catch (Exception e) {
             log.error("Error downloading file: {}", fileName, e);
             return ResponseEntity.status(500).body(null);
@@ -215,6 +231,49 @@ public class FileManagementServiceImpl implements FileManagementService {
         int dotIndex = fileName.lastIndexOf(".");
         return dotIndex > 0 ? fileName.substring(0, dotIndex) : fileName;
     }
+
+    private boolean isPdfFile(String fileName, String contentType) {
+        return (contentType != null && contentType.equals("application/pdf")) ||
+                fileName.toLowerCase().endsWith(".pdf");
+    }
+
+    private String determineContentType(String fileName, FileDesc fileDesc) {
+        // First try to get content type from stored file description
+        if (fileDesc != null && fileDesc.type() != null) {
+            return fileDesc.type();
+        }
+
+        // Fallback to determining by file extension
+        String extension = getFileExtension(fileName).toLowerCase();
+        return switch (extension) {
+            case "pdf" -> "application/pdf";
+            case "jpg", "jpeg" -> "image/jpeg";
+            case "png" -> "image/png";
+            case "gif" -> "image/gif";
+            case "txt" -> "text/plain";
+            case "doc" -> "application/msword";
+            case "docx" -> "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+            case "xls" -> "application/vnd.ms-excel";
+            case "xlsx" -> "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+            default -> "application/octet-stream";
+        };
+    }
+
+
+    private String getFileExtension(String fileName) {
+        int dotIndex = fileName.lastIndexOf(".");
+        return dotIndex > 0 ? fileName.substring(dotIndex + 1) : "";
+    }
+
+    private String buildContentDisposition(String fileName, String contentType) {
+        // For PDFs, use inline disposition to allow browser viewing
+        if (isPdfFile(fileName, contentType)) {
+            return String.format("inline; filename=\"%s\"", fileName);
+        }
+        // For other files, use attachment to force download
+        return String.format("attachment; filename=\"%s\"", fileName);
+    }
+
 
 
 }
