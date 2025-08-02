@@ -243,6 +243,31 @@ public class FileManagementServiceImpl implements FileManagementService {
         }
     }
 
+    @Override
+    public ResponseEntity<String> deleteFiles(List<String> fileNames) {
+
+        log.info("Inside FileManagementServiceImpl.deleteFiles() method");
+        Assert.notEmpty(fileNames, "File names cannot be empty");
+
+        for (String fileName : fileNames) {
+            try {
+                Path filePath = Paths.get(directoryPath, fileName);
+                if (Files.exists(filePath)) {
+                    Files.delete(filePath);
+                    fileOperationRepository.deleteByName(fileName);
+                    log.info("Deleted file: {}", fileName);
+                } else {
+                    log.error("File not found: {}", fileName);
+                    return ResponseEntity.status(404).body("File not found: " + fileName);
+                }
+            } catch (Exception e) {
+                log.error("Error deleting file: {}", fileName, e);
+                return ResponseEntity.status(500).body("Error deleting file: " + fileName);
+            }
+        }
+        return ResponseEntity.ok("Files deleted successfully: " + fileNames);
+    }
+
     private BufferedImage resizeImage(BufferedImage original, Integer width, Integer height, String quality) {
         if (width == null && height == null) {
             return original;

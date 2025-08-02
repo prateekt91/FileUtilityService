@@ -68,4 +68,10 @@ public class FileController {
         return fileManagementService.downloadResizedFile(fileName, width, height, quality);
     }
 
+    @DeleteMapping("/delete")
+    public ResponseEntity<String> deleteFiles(@RequestParam("fileNames") List<String> fileNames) {
+        log.info("Inside method FileController.deleteFiles()");
+        return fileManagementService.deleteFiles(fileNames);
+    }
+
 }

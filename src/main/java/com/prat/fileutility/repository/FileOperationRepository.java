@@ -9,4 +9,6 @@ public interface FileOperationRepository extends MongoRepository<FileDesc, Strin
 
 
     FileDesc findByName(String fileName);
+
+    void deleteByName(String fileName);
 }

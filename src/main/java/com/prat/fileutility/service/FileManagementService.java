@@ -18,4 +18,6 @@ public interface FileManagementService {
 
     ResponseEntity<Resource> downloadResizedFile(String fileName, Integer width, Integer height, String quality);
 
+    ResponseEntity<String> deleteFiles(List<String> fileNames);
+
 }
