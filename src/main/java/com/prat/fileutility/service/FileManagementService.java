@@ -12,7 +12,7 @@ public interface FileManagementService {
 
     List<FileDesc> listFiles();
 
-    String uploadFile(MultipartFile file, Instant time);
+    String uploadFiles(List<MultipartFile> files, Instant time);
 
     ResponseEntity<Resource> downloadFile(String fileName);
 

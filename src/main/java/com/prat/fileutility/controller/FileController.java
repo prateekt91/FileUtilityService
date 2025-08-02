@@ -35,12 +35,12 @@ public class FileController {
     }
 
     @PostMapping("/upload")
-    public ResponseEntity<String> uploadFile(@RequestParam("file") MultipartFile file) {
+    public ResponseEntity<String> uploadFile(@RequestParam("files") List<MultipartFile> files) {
         Instant time = Instant.now();
         log.info("Inside FileController.uploadFile() method");
-        log.info("Uploading file: {} with size: {} bytes", file.getOriginalFilename(), file.getSize());
+        //log.info("Uploading file: {} with size: {} bytes", file.getOriginalFilename(), file.getSize());
         // Logic to upload a file would go here
-        return ResponseEntity.ok(fileManagementService.uploadFile(file, time));
+        return ResponseEntity.ok(fileManagementService.uploadFiles(files, time));
     }
 
     @GetMapping("/download")

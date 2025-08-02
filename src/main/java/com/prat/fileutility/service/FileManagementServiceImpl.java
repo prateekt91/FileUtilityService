@@ -78,11 +78,7 @@ public class FileManagementServiceImpl implements FileManagementService {
         }
     }
 
-    @Override
-    public String uploadFile(MultipartFile file, Instant time) {
-        log.info("Inside FileManagementServiceImpl.uploadFile() method");
-        Assert.notNull(file, "File cannot be null");
-
+    private String processFile(MultipartFile file, Instant time) throws IOException {
         String fileName = file.getOriginalFilename();
         try {
             // Validate file is not empty
@@ -106,7 +102,7 @@ public class FileManagementServiceImpl implements FileManagementService {
 
             // Create the target file path correctly
             Path targetFile = directoryPathObj.resolve(fileName);
-            
+
             log.info("Uploading a file to: {}", targetFile.toString());
 
             // Use streaming to copy file
@@ -122,9 +118,9 @@ public class FileManagementServiceImpl implements FileManagementService {
 
             Instant currentTime = Instant.now();
             long timeTook = (currentTime.toEpochMilli() - time.toEpochMilli()) / 1000;
-            log.info("Time taken to upload file: {} is: {} s", fileName, timeTook);
-            return "File uploaded successfully: " + fileName + " It took " + timeTook + " seconds";
-            
+            log.info("Time taken to upload a file: {} is: {} s", fileName, timeTook);
+            return  fileName;
+
         } catch (IOException e) {
             log.error("IO Error uploading file: {}", fileName, e);
             return "Error uploading file: " + fileName + " - IO Error: " + e.getMessage();
@@ -132,6 +128,32 @@ public class FileManagementServiceImpl implements FileManagementService {
             log.error("Error uploading file: {}", fileName, e);
             return "Error uploading file: " + fileName + " - " + e.getMessage();
         }
+    }
+
+    @Override
+    public String uploadFiles(List<MultipartFile> files, Instant time) {
+        log.info("Inside FileManagementServiceImpl.uploadFile() method");
+        Assert.notNull(files, "File cannot be null");
+
+        List<String> results = new ArrayList<>();
+        for (MultipartFile file : files) {
+            try {
+                String result = processFile(file, time);
+                results.add(result);
+            } catch (IOException e) {
+                String fileName = file.getOriginalFilename();
+                log.error("IO Error uploading file: {}", fileName, e);
+                results.add("Error uploading file: " + fileName + " - IO Error: " + e.getMessage());
+            } catch (Exception e) {
+                String fileName = file.getOriginalFilename();
+                log.error("Error uploading file: {}", fileName, e);
+                results.add("Error uploading file: " + fileName + " - " + e.getMessage());
+            }
+
+        }
+
+        return String.join(";", results);
+
     }
 
     @Override
@@ -311,7 +333,7 @@ public class FileManagementServiceImpl implements FileManagementService {
         return (contentType != null && contentType.equals("application/pdf")) ||
                 fileName.toLowerCase().endsWith(".pdf");
     }
-    
+
     private boolean isMediaFile(String contentType) {
         if (contentType == null) return false;
 
