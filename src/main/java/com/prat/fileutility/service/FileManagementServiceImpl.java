@@ -1,0 +1,384 @@
+package com.prat.fileutility.service;
+
+import com.prat.fileutility.model.FileDesc;
+import com.prat.fileutility.repository.FileOperationRepository;
+import org.imgscalr.Scalr;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.io.ByteArrayResource;
+import org.springframework.core.io.FileSystemResource;
+import org.springframework.core.io.Resource;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.stereotype.Service;
+import org.springframework.util.Assert;
+import org.springframework.web.multipart.MultipartFile;
+
+import javax.imageio.ImageIO;
+import java.awt.image.BufferedImage;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.stream.Stream;
+
+@Service
+public class FileManagementServiceImpl implements FileManagementService {
+
+    @Value("${file.directory.path}")
+    private String directoryPath;
+
+    private FileOperationRepository fileOperationRepository;
+
+    private Logger log = LoggerFactory.getLogger(FileManagementServiceImpl.class);
+
+    public FileManagementServiceImpl(FileOperationRepository fileOperationRepository) {
+        this.fileOperationRepository = fileOperationRepository;
+    }
+
+    @Override
+    public List<FileDesc> listFiles() {
+        log.info("Inside FileManagementServiceImpl.listFiles() method");
+
+        // Logic to list files in a directory would go here
+        Path fileDirectoryPath = Paths.get(directoryPath);
+        List<FileDesc> fileDescList = new ArrayList<>();
+
+        try {
+            if (!Files.exists(fileDirectoryPath)) {
+                Files.createDirectories(fileDirectoryPath);
+            }
+
+            try(Stream<Path> paths = Files.list(fileDirectoryPath)) {
+                List<String> fileList = paths
+                        .filter(Files::isRegularFile)
+                        .map(Path::getFileName)
+                        .map(Path::toString)
+                        .toList();
+
+                if(!fileList.isEmpty()) {
+                    fileList.forEach(file -> {
+                        fileDescList.add(fileOperationRepository.findByName(file));
+                    });
+                }
+                return fileDescList;
+            }
+        } catch (Exception e) {
+           log.error("Error listing files in directory: {}", directoryPath, e);
+           return fileDescList;
+        }
+    }
+
+    private String processFile(MultipartFile file, Instant time) throws IOException {
+        String fileName = file.getOriginalFilename();
+        try {
+            // Validate file is not empty
+            if (file.isEmpty()) {
+                log.error("File is empty: {}", fileName);
+                return "Error: File is empty";
+            }
+
+            // Validate filename is not null or empty
+            if (fileName == null || fileName.trim().isEmpty()) {
+                log.error("File name is null or empty");
+                return "Error: File name is required";
+            }
+
+            // Create a directory if it doesn't exist
+            Path directoryPathObj = Paths.get(directoryPath);
+            if (!Files.exists(directoryPathObj)) {
+                Files.createDirectories(directoryPathObj);
+                log.info("Created directory: {}", directoryPath);
+            }
+
+            // Create the target file path correctly
+            Path targetFile = directoryPathObj.resolve(fileName);
+
+            log.info("Uploading a file to: {}", targetFile.toString());
+
+            // Use streaming to copy file
+            try (InputStream inputStream = file.getInputStream()) {
+                Files.copy(inputStream, targetFile, StandardCopyOption.REPLACE_EXISTING);
+            }
+
+            // Save file metadata
+            FileDesc fileDesc = new FileDesc(null, file.getOriginalFilename(),
+                    file.getContentType(), file.getSize(), LocalDateTime.now(),
+                    directoryPath);
+            fileOperationRepository.save(fileDesc);
+
+            Instant currentTime = Instant.now();
+            long timeTook = (currentTime.toEpochMilli() - time.toEpochMilli()) / 1000;
+            log.info("Time taken to upload a file: {} is: {} s", fileName, timeTook);
+            return  fileName;
+
+        } catch (IOException e) {
+            log.error("IO Error uploading file: {}", fileName, e);
+            return "Error uploading file: " + fileName + " - IO Error: " + e.getMessage();
+        } catch (Exception e) {
+            log.error("Error uploading file: {}", fileName, e);
+            return "Error uploading file: " + fileName + " - " + e.getMessage();
+        }
+    }
+
+    @Override
+    public String uploadFiles(List<MultipartFile> files, Instant time) {
+        log.info("Inside FileManagementServiceImpl.uploadFile() method");
+        Assert.notNull(files, "File cannot be null");
+
+        List<String> results = new ArrayList<>();
+        for (MultipartFile file : files) {
+            try {
+                String result = processFile(file, time);
+                results.add(result);
+            } catch (IOException e) {
+                String fileName = file.getOriginalFilename();
+                log.error("IO Error uploading file: {}", fileName, e);
+                results.add("Error uploading file: " + fileName + " - IO Error: " + e.getMessage());
+            } catch (Exception e) {
+                String fileName = file.getOriginalFilename();
+                log.error("Error uploading file: {}", fileName, e);
+                results.add("Error uploading file: " + fileName + " - " + e.getMessage());
+            }
+
+        }
+
+        return String.join(";", results);
+
+    }
+
+    @Override
+    public ResponseEntity<Resource> downloadFile(String fileName) {
+        log.info("Inside FileManagementServiceImpl.downloadFile() method");
+        try {
+            Assert.notNull(fileName, "File name cannot be null");
+
+            Path filePath = Paths.get(directoryPath, fileName);
+            Resource resource = new FileSystemResource(filePath.toFile());
+
+            if (!resource.exists()) {
+                log.error("File not found: {}", fileName);
+                throw new RuntimeException("File not found: " + fileName);
+            }
+
+            // Get file information from repository
+            FileDesc fileDesc = fileOperationRepository.findByName(fileName);
+            String contentType = determineContentType(fileName, fileDesc);
+
+            log.info("File found and accessible: {} with content type: {}", filePath.getFileName(), contentType);
+
+            ResponseEntity.BodyBuilder responseBuilder = ResponseEntity.ok()
+                   // .header(HttpHeaders.CONTENT_DISPOSITION, buildContentDisposition(fileName, contentType))
+                    .contentType(MediaType.parseMediaType(contentType));
+
+            // Check if it's a media file that needs streaming support
+            if (isMediaFile(contentType)) {
+                log.info("Setting up streaming headers for media file: {}", fileName);
+                responseBuilder
+                        .header(HttpHeaders.ACCEPT_RANGES, "bytes")
+                        .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"" + fileName + "\"")
+                        .header(HttpHeaders.CACHE_CONTROL, "public, max-age=3600")
+                        .header("X-Content-Duration", getMediaDuration(filePath).toString());
+            }
+             // Add PDF-specific headers for better browser handling
+             else if (isPdfFile(fileName, contentType)) {
+                responseBuilder.header(HttpHeaders.CACHE_CONTROL, "no-cache, no-store, must-revalidate")
+                        .header(HttpHeaders.CONTENT_DISPOSITION, buildContentDisposition(fileName, contentType))
+                        .header(HttpHeaders.PRAGMA, "no-cache")
+                       .header(HttpHeaders.EXPIRES, "0");
+                log.info("Added PDF-specific headers for a file: {}", fileName);
+            }
+
+            return responseBuilder.body(resource);
+
+        } catch (Exception e) {
+            log.error("Error downloading file: {}", fileName, e);
+            return ResponseEntity.status(500).body(null);
+        }
+    }
+
+    private Long getMediaDuration(Path filePath) {
+        // This is a placeholder - in a real implementation, you might use
+        // a library like FFmpeg Java wrapper to get actual media duration
+        try {
+            return Files.size(filePath) / 1024; // Simple estimation based on file size
+        } catch (Exception e) {
+            return 0L;
+        }
+    }
+
+
+    @Override
+    public ResponseEntity<Resource> downloadResizedFile(String fileName, Integer width, Integer height, String quality) {
+        log.info("Inside FileManagementServiceImpl.downloadResizedFile() method");
+
+        try {
+            Assert.notNull(fileName, "File name cannot be null");
+
+            Path filePath = Paths.get(directoryPath, fileName);
+            if (!Files.exists(filePath)) {
+                log.error("File not found: {}", fileName);
+                throw new RuntimeException("File not found: " + fileName);
+            }
+
+            FileDesc fileDesc = fileOperationRepository.findByName(fileName);
+            if (fileDesc == null || !isImageFile(fileDesc.type())) {
+                // If not an image, return an original file
+                return downloadFile(fileName);
+            }
+
+            // Resize image
+            BufferedImage originalImage = ImageIO.read(filePath.toFile());
+            BufferedImage resizedImage = resizeImage(originalImage, width, height, quality);
+
+            // Convert to a byte array
+            ByteArrayOutputStream baos = new ByteArrayOutputStream();
+            String format = getImageFormat(fileName);
+            ImageIO.write(resizedImage, format, baos);
+            byte[] imageBytes = baos.toByteArray();
+
+            // Create a resource from a byte array
+            Resource resource = new ByteArrayResource(imageBytes);
+
+            return ResponseEntity.ok()
+                    .header(HttpHeaders.CONTENT_DISPOSITION,
+                            String.format("attachment; filename=\"%s_%dx%d.%s\"",
+                                    getFileNameWithoutExtension(fileName),
+                                    width != null ? width : originalImage.getWidth(),
+                                    height != null ? height : originalImage.getHeight(),
+                                    format))
+                    .contentType(MediaType.parseMediaType(fileDesc.type()))
+                    .body(resource);
+
+        } catch (Exception e) {
+            log.error("Error downloading resized file: {}", fileName, e);
+            return ResponseEntity.status(500).body(null);
+        }
+    }
+
+    @Override
+    public ResponseEntity<String> deleteFiles(List<String> fileNames) {
+
+        log.info("Inside FileManagementServiceImpl.deleteFiles() method");
+        Assert.notEmpty(fileNames, "File names cannot be empty");
+
+        for (String fileName : fileNames) {
+            try {
+                Path filePath = Paths.get(directoryPath, fileName);
+                if (Files.exists(filePath)) {
+                    Files.delete(filePath);
+                    fileOperationRepository.deleteByName(fileName);
+                    log.info("Deleted file: {}", fileName);
+                } else {
+                    log.error("File not found: {}", fileName);
+                    return ResponseEntity.status(404).body("File not found: " + fileName);
+                }
+            } catch (Exception e) {
+                log.error("Error deleting file: {}", fileName, e);
+                return ResponseEntity.status(500).body("Error deleting file: " + fileName);
+            }
+        }
+        return ResponseEntity.ok("Files deleted successfully: " + fileNames);
+    }
+
+    private BufferedImage resizeImage(BufferedImage original, Integer width, Integer height, String quality) {
+        if (width == null && height == null) {
+            return original;
+        }
+
+        int targetWidth = width != null ? width : original.getWidth();
+        int targetHeight = height != null ? height : original.getHeight();
+
+        // Maintain an aspect ratio if only one dimension is provided
+        if (width == null) {
+            targetWidth = (int) ((double) targetHeight / original.getHeight() * original.getWidth());
+        } else if (height == null) {
+            targetHeight = (int) ((double) targetWidth / original.getWidth() * original.getHeight());
+        }
+
+        return Scalr.resize(original,
+                Scalr.Method.valueOf(quality.toUpperCase()),
+                targetWidth, targetHeight);
+    }
+
+    private boolean isImageFile(String contentType) {
+        return contentType != null && contentType.startsWith("image/");
+    }
+
+    private String getImageFormat(String fileName) {
+        String extension = fileName.substring(fileName.lastIndexOf(".") + 1).toLowerCase();
+        return switch (extension) {
+            case "jpg", "jpeg" -> "jpg";
+            case "png" -> "png";
+            case "gif" -> "gif";
+            default -> "jpg";
+        };
+    }
+
+    private String getFileNameWithoutExtension(String fileName) {
+        int dotIndex = fileName.lastIndexOf(".");
+        return dotIndex > 0 ? fileName.substring(0, dotIndex) : fileName;
+    }
+
+    private boolean isPdfFile(String fileName, String contentType) {
+        return (contentType != null && contentType.equals("application/pdf")) ||
+                fileName.toLowerCase().endsWith(".pdf");
+    }
+
+    private boolean isMediaFile(String contentType) {
+        if (contentType == null) return false;
+
+        return contentType.startsWith("video/") ||
+                contentType.startsWith("audio/") ||
+                contentType.equals("application/octet-stream") &&
+                        (contentType.contains("mp4") || contentType.contains("avi") ||
+                                contentType.contains("mkv") || contentType.contains("mp3") ||
+                                contentType.contains("wav") || contentType.contains("flac"));
+
+    }
+
+    private String determineContentType(String fileName, FileDesc fileDesc) {
+        // First try to get content type from stored file description
+        if (fileDesc != null && fileDesc.type() != null) {
+            return fileDesc.type();
+        }
+
+        // Fallback to determining by file extension
+        String extension = getFileExtension(fileName).toLowerCase();
+        return switch (extension) {
+            case "pdf" -> "application/pdf";
+            case "jpg", "jpeg" -> "image/jpeg";
+            case "png" -> "image/png";
+            case "gif" -> "image/gif";
+            case "txt" -> "text/plain";
+            case "doc" -> "application/msword";
+            case "docx" -> "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+            case "xls" -> "application/vnd.ms-excel";
+            case "xlsx" -> "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+            default -> "application/octet-stream";
+        };
+    }
+
+    private String getFileExtension(String fileName) {
+        int dotIndex = fileName.lastIndexOf(".");
+        return dotIndex > 0 ? fileName.substring(dotIndex + 1) : "";
+    }
+
+    private String buildContentDisposition(String fileName, String contentType) {
+        // For PDFs, use inline disposition to allow browser viewing
+        if (isPdfFile(fileName, contentType)) {
+            return String.format("inline; filename=\"%s\"", fileName);
+        }
+        // For other files, use attachment to force download
+        return String.format("attachment; filename=\"%s\"", fileName);
+    }
+}
