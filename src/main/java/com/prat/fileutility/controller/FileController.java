@@ -38,8 +38,6 @@ public class FileController {
     public ResponseEntity<String> uploadFile(@RequestParam("files") List<MultipartFile> files) {
         Instant time = Instant.now();
         log.info("Inside FileController.uploadFile() method");
-        //log.info("Uploading file: {} with size: {} bytes", file.getOriginalFilename(), file.getSize());
-        // Logic to upload a file would go here
         return ResponseEntity.ok(fileManagementService.uploadFiles(files, time));
     }
 
@@ -48,11 +46,6 @@ public class FileController {
                                                 // @RequestHeader(value = "Range", required = false) String rangeHeader) {
         // Logic to download a file would go here
         log.info("Inside FileController.downloadFile() method for file: {}", fileName);
-
-//        if (rangeHeader != null) {
-//            log.info("Range request detected: {}", rangeHeader);
-//            return fileManagementService.streamMediaFile(fileName, rangeHeader);
-//        }
 
         return fileManagementService.downloadFile(fileName);
     }
@@ -64,7 +57,7 @@ public class FileController {
             @RequestParam(required = false) Integer height,
             @RequestParam(defaultValue = "SMOOTH") String quality) {
 
-        log.info("Downloading resized file: {} with dimensions: {}x{}", fileName, width, height);
+        log.info("Downloading a resized file: {} with dimensions: {}x{}", fileName, width, height);
         return fileManagementService.downloadResizedFile(fileName, width, height, quality);
     }
 
