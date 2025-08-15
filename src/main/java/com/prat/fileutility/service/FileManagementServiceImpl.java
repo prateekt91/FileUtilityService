@@ -84,13 +84,13 @@ public class FileManagementServiceImpl implements FileManagementService {
             // Validate file is not empty
             if (file.isEmpty()) {
                 log.error("File is empty: {}", fileName);
-                return "Error: File is empty";
+                throw new com.prat.fileutility.exception.InvalidFileException("File is empty");
             }
 
             // Validate filename is not null or empty
             if (fileName == null || fileName.trim().isEmpty()) {
                 log.error("File name is null or empty");
-                return "Error: File name is required";
+                throw new com.prat.fileutility.exception.InvalidFileException("File name is required");
             }
 
             // Create a directory if it doesn't exist
@@ -123,31 +123,36 @@ public class FileManagementServiceImpl implements FileManagementService {
 
         } catch (IOException e) {
             log.error("IO Error uploading file: {}", fileName, e);
-            return "Error uploading file: " + fileName + " - IO Error: " + e.getMessage();
+            throw new com.prat.fileutility.exception.FileStorageException("Error uploading file: " + fileName, e);
         } catch (Exception e) {
             log.error("Error uploading file: {}", fileName, e);
-            return "Error uploading file: " + fileName + " - " + e.getMessage();
+            throw new com.prat.fileutility.exception.FileStorageException("Error uploading file: " + fileName, e);
         }
     }
 
     @Override
     public String uploadFiles(List<MultipartFile> files, Instant time) {
         log.info("Inside FileManagementServiceImpl.uploadFile() method");
-        Assert.notNull(files, "File cannot be null");
+        if (files == null) {
+            throw new com.prat.fileutility.exception.InvalidFileException("Files cannot be null");
+        }
 
         List<String> results = new ArrayList<>();
         for (MultipartFile file : files) {
             try {
                 String result = processFile(file, time);
                 results.add(result);
+            } catch (com.prat.fileutility.exception.FileStorageException | com.prat.fileutility.exception.InvalidFileException e) {
+                // Re-throw custom exceptions
+                throw e;
             } catch (IOException e) {
                 String fileName = file.getOriginalFilename();
                 log.error("IO Error uploading file: {}", fileName, e);
-                results.add("Error uploading file: " + fileName + " - IO Error: " + e.getMessage());
+                throw new com.prat.fileutility.exception.FileStorageException("Error uploading file: " + fileName, e);
             } catch (Exception e) {
                 String fileName = file.getOriginalFilename();
                 log.error("Error uploading file: {}", fileName, e);
-                results.add("Error uploading file: " + fileName + " - " + e.getMessage());
+                throw new com.prat.fileutility.exception.FileStorageException("Error uploading file: " + fileName, e);
             }
 
         }
@@ -167,7 +172,7 @@ public class FileManagementServiceImpl implements FileManagementService {
 
             if (!resource.exists()) {
                 log.error("File not found: {}", fileName);
-                throw new RuntimeException("File not found: " + fileName);
+                throw new com.prat.fileutility.exception.FileNotFoundException("File not found: " + fileName);
             }
 
             // Get file information from repository
@@ -200,9 +205,12 @@ public class FileManagementServiceImpl implements FileManagementService {
 
             return responseBuilder.body(resource);
 
+        } catch (com.prat.fileutility.exception.FileNotFoundException e) {
+            // Let the global exception handler handle this
+            throw e;
         } catch (Exception e) {
             log.error("Error downloading file: {}", fileName, e);
-            return ResponseEntity.status(500).body(null);
+            throw new com.prat.fileutility.exception.FileStorageException("Error downloading file: " + fileName, e);
         }
     }
 
@@ -227,7 +235,7 @@ public class FileManagementServiceImpl implements FileManagementService {
             Path filePath = Paths.get(directoryPath, fileName);
             if (!Files.exists(filePath)) {
                 log.error("File not found: {}", fileName);
-                throw new RuntimeException("File not found: " + fileName);
+                throw new com.prat.fileutility.exception.FileNotFoundException("File not found: " + fileName);
             }
 
             FileDesc fileDesc = fileOperationRepository.findByName(fileName);
@@ -259,9 +267,12 @@ public class FileManagementServiceImpl implements FileManagementService {
                     .contentType(MediaType.parseMediaType(fileDesc.type()))
                     .body(resource);
 
+        } catch (com.prat.fileutility.exception.FileNotFoundException e) {
+            // Let the global exception handler handle this
+            throw e;
         } catch (Exception e) {
             log.error("Error downloading resized file: {}", fileName, e);
-            return ResponseEntity.status(500).body(null);
+            throw new com.prat.fileutility.exception.FileStorageException("Error downloading resized file: " + fileName, e);
         }
     }
 
@@ -269,7 +280,9 @@ public class FileManagementServiceImpl implements FileManagementService {
     public ResponseEntity<String> deleteFiles(List<String> fileNames) {
 
         log.info("Inside FileManagementServiceImpl.deleteFiles() method");
-        Assert.notEmpty(fileNames, "File names cannot be empty");
+        if (fileNames == null || fileNames.isEmpty()) {
+            throw new com.prat.fileutility.exception.InvalidFileException("File names cannot be empty");
+        }
 
         for (String fileName : fileNames) {
             try {
@@ -280,11 +293,14 @@ public class FileManagementServiceImpl implements FileManagementService {
                     log.info("Deleted file: {}", fileName);
                 } else {
                     log.error("File not found: {}", fileName);
-                    return ResponseEntity.status(404).body("File not found: " + fileName);
+                    throw new com.prat.fileutility.exception.FileNotFoundException("File not found: " + fileName);
                 }
+            } catch (com.prat.fileutility.exception.FileNotFoundException e) {
+                // Let the global exception handler handle this
+                throw e;
             } catch (Exception e) {
                 log.error("Error deleting file: {}", fileName, e);
-                return ResponseEntity.status(500).body("Error deleting file: " + fileName);
+                throw new com.prat.fileutility.exception.FileStorageException("Error deleting file: " + fileName, e);
             }
         }
         return ResponseEntity.ok("Files deleted successfully: " + fileNames);
